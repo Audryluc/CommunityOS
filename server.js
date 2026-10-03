@@ -1,6 +1,6 @@
 const express = require("express");
 const path = require("path");
-const Database = require("better-sqlite3");
+const { Pool } = require("pg");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const http = require("http");
@@ -9,176 +9,155 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+const PORT = process.env.PORT || 3000;
 
-const PORT = 3000;
+// =========================
+// POSTGRESQL
+// =========================
 
-const db = new Database("users.db");
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
 
-app.use(express.json());
-app.use(express.static(__dirname));
-
-// ==========================================
-// TABLES
-// ==========================================
-
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL
-    )
-`).run();
-
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        token TEXT UNIQUE NOT NULL,
-        user_id INTEGER NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES users(id)
-    )
-`).run();
-
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS posts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        content TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
-    )
-`).run();
-
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS likes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        post_id INTEGER NOT NULL,
-        user_id INTEGER NOT NULL,
-        UNIQUE(post_id, user_id),
-        FOREIGN KEY (post_id) REFERENCES posts(id),
-        FOREIGN KEY (user_id) REFERENCES users(id)
-    )
-`).run();
-
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS comments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        post_id INTEGER NOT NULL,
-        user_id INTEGER NOT NULL,
-        content TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (post_id) REFERENCES posts(id),
-        FOREIGN KEY (user_id) REFERENCES users(id)
-    )
-`).run();
-
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS friend_requests (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sender_id INTEGER NOT NULL,
-        receiver_id INTEGER NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (sender_id) REFERENCES users(id),
-        FOREIGN KEY (receiver_id) REFERENCES users(id)
-    )
-`).run();
-
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS friends (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        friend_id INTEGER NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(user_id, friend_id),
-        FOREIGN KEY (user_id) REFERENCES users(id),
-        FOREIGN KEY (friend_id) REFERENCES users(id)
-    )
-`).run();
-
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sender_id INTEGER NOT NULL,
-        receiver_id INTEGER NOT NULL,
-        content TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        is_read INTEGER NOT NULL DEFAULT 0,
-        FOREIGN KEY (sender_id) REFERENCES users(id),
-        FOREIGN KEY (receiver_id) REFERENCES users(id)
-    )
-`).run();
-
-// ==========================================
-// AUTHENTIFICATION
-// ==========================================
-
-function getUserFromToken(req) {
-    const token = req.headers.authorization;
-
-    if (!token) {
-        return null;
-    }
-
-    const session = db.prepare(`
-        SELECT users.id, users.name, users.email
-        FROM sessions
-        JOIN users ON users.id = sessions.user_id
-        WHERE sessions.token = ?
-    `).get(token);
-
-    return session || null;
+async function query(sql, params = []) {
+    return pool.query(sql, params);
 }
 
-// ==========================================
-// SOCKET.IO - UTILISATEUR CONNECTÉ
-// ==========================================
+async function initDatabase() {
+    await query(`
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
+        )
+    `);
+
+    await query(`
+        CREATE TABLE IF NOT EXISTS sessions (
+            id SERIAL PRIMARY KEY,
+            token TEXT UNIQUE NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
+
+    await query(`
+        CREATE TABLE IF NOT EXISTS posts (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await query(`
+        CREATE TABLE IF NOT EXISTS likes (
+            id SERIAL PRIMARY KEY,
+            post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(post_id, user_id)
+        )
+    `);
+
+    await query(`
+        CREATE TABLE IF NOT EXISTS comments (
+            id SERIAL PRIMARY KEY,
+            post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await query(`
+        CREATE TABLE IF NOT EXISTS friend_requests (
+            id SERIAL PRIMARY KEY,
+            sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await query(`
+        CREATE TABLE IF NOT EXISTS friends (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            friend_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, friend_id)
+        )
+    `);
+
+    await query(`
+        CREATE TABLE IF NOT EXISTS messages (
+            id SERIAL PRIMARY KEY,
+            sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_read INTEGER NOT NULL DEFAULT 0
+        )
+    `);
+
+    console.log("✅ PostgreSQL prêt.");
+}
+
+// =========================
+// MIDDLEWARE
+// =========================
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname)));
 
 const onlineUsers = new Map();
 
-io.on("connection", (socket) => {
-    const token = socket.handshake.auth.token;
+// =========================
+// AUTHENTIFICATION
+// =========================
 
-    if (!token) {
-        socket.disconnect();
-        return;
-    }
+async function getUserFromToken(token) {
+    if (!token) return null;
 
-    const session = db.prepare(`
-        SELECT user_id
+    const result = await query(`
+        SELECT users.*
         FROM sessions
-        WHERE token = ?
-    `).get(token);
+        JOIN users ON users.id = sessions.user_id
+        WHERE sessions.token = $1
+    `, [token]);
 
-    if (!session) {
-        socket.disconnect();
-        return;
-    }
+    return result.rows[0] || null;
+}
 
-    const userId = session.user_id;
+async function authMiddleware(req, res, next) {
+    try {
+        const token = req.headers.authorization;
+        const user = await getUserFromToken(token);
 
-    onlineUsers.set(userId, socket.id);
-
-    console.log(`🟢 Utilisateur ${userId} connecté en temps réel.`);
-
-    socket.on("disconnect", () => {
-        if (onlineUsers.get(userId) === socket.id) {
-            onlineUsers.delete(userId);
+        if (!user) {
+            return res.status(401).json({
+                error: "Non authentifié"
+            });
         }
 
-        console.log(`🔴 Utilisateur ${userId} déconnecté.`);
-    });
-});
+        req.user = user;
+        next();
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            error: "Erreur d'authentification."
+        });
+    }
+}
 
-// ==========================================
+// =========================
 // INSCRIPTION
-// ==========================================
+// =========================
 
 app.post("/api/register", async (req, res) => {
     try {
-        const name = (req.body.name || "").trim();
-        const email = (req.body.email || "").trim().toLowerCase();
-        const password = req.body.password || "";
+        const { name, email, password } = req.body;
 
         if (!name || !email || !password) {
             return res.status(400).json({
@@ -186,53 +165,56 @@ app.post("/api/register", async (req, res) => {
             });
         }
 
-        const existingUser = db.prepare(`
-            SELECT id
-            FROM users
-            WHERE email = ?
-        `).get(email);
+        const existing = await query(
+            `SELECT id FROM users WHERE email = $1`,
+            [email.trim()]
+        );
 
-        if (existingUser) {
+        if (existing.rows.length > 0) {
             return res.status(400).json({
-                error: "Cet email est déjà utilisé."
+                error: "Cette adresse email existe déjà."
             });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const result = db.prepare(`
+        const result = await query(`
             INSERT INTO users (name, email, password)
-            VALUES (?, ?, ?)
-        `).run(name, email, hashedPassword);
+            VALUES ($1, $2, $3)
+            RETURNING id
+        `, [
+            name.trim(),
+            email.trim(),
+            hashedPassword
+        ]);
 
         res.json({
             success: true,
-            userId: result.lastInsertRowid
+            userId: result.rows[0].id
         });
 
     } catch (error) {
         console.error(error);
-
         res.status(500).json({
-            error: "Erreur lors de la création du compte."
+            error: "Erreur lors de l'inscription."
         });
     }
 });
 
-// ==========================================
+// =========================
 // CONNEXION
-// ==========================================
+// =========================
 
 app.post("/api/login", async (req, res) => {
     try {
-        const email = (req.body.email || "").trim().toLowerCase();
-        const password = req.body.password || "";
+        const { email, password } = req.body;
 
-        const user = db.prepare(`
-            SELECT *
-            FROM users
-            WHERE email = ?
-        `).get(email);
+        const result = await query(
+            `SELECT * FROM users WHERE email = $1`,
+            [email]
+        );
+
+        const user = result.rows[0];
 
         if (!user) {
             return res.status(401).json({
@@ -253,12 +235,13 @@ app.post("/api/login", async (req, res) => {
 
         const token = crypto.randomBytes(32).toString("hex");
 
-        db.prepare(`
+        await query(`
             INSERT INTO sessions (token, user_id)
-            VALUES (?, ?)
-        `).run(token, user.id);
+            VALUES ($1, $2)
+        `, [token, user.id]);
 
         res.json({
+            success: true,
             token,
             user: {
                 id: user.id,
@@ -269,97 +252,130 @@ app.post("/api/login", async (req, res) => {
 
     } catch (error) {
         console.error(error);
-
         res.status(500).json({
-            error: "Erreur lors de la connexion."
+            error: "Erreur de connexion."
         });
     }
 });
 
-// ==========================================
+// =========================
 // UTILISATEUR CONNECTÉ
-// ==========================================
+// =========================
 
-app.get("/api/me", (req, res) => {
-    const user = getUserFromToken(req);
-
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
-    res.json(user);
-});
-
-// ==========================================
-// DÉCONNEXION
-// ==========================================
-
-app.post("/api/logout", (req, res) => {
-    const token = req.headers.authorization;
-
-    if (token) {
-        db.prepare(`
-            DELETE FROM sessions
-            WHERE token = ?
-        `).run(token);
-    }
-
+app.get("/api/me", authMiddleware, (req, res) => {
     res.json({
-        success: true
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email
     });
 });
 
-// ==========================================
-// LISTE DES UTILISATEURS
-// ==========================================
+// =========================
+// DÉCONNEXION
+// =========================
 
-app.get("/api/users", (req, res) => {
-    const users = db.prepare(`
-        SELECT id, name, email
-        FROM users
-        ORDER BY id DESC
-    `).all();
+app.post("/api/logout", authMiddleware, async (req, res) => {
+    try {
+        await query(
+            `DELETE FROM sessions WHERE token = $1`,
+            [req.headers.authorization]
+        );
 
-    res.json(users);
+        res.json({ success: true });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            error: "Erreur de déconnexion."
+        });
+    }
 });
 
-// ==========================================
-// RECHERCHE UTILISATEURS
-// ==========================================
+// =========================
+// PROFIL
+// =========================
 
-app.get("/api/users/search", (req, res) => {
-    const q = (req.query.q || "").trim();
+app.put("/api/profile", authMiddleware, async (req, res) => {
+    const { name, email } = req.body;
 
-    if (!q) {
-        return res.json([]);
+    if (!name || !email) {
+        return res.status(400).json({
+            error: "Nom et email obligatoires."
+        });
     }
 
-    const users = db.prepare(`
-        SELECT id, name, email
-        FROM users
-        WHERE name LIKE ?
-           OR email LIKE ?
-        ORDER BY name ASC
-        LIMIT 20
-    `).all(`%${q}%`, `%${q}%`);
+    try {
+        await query(`
+            UPDATE users
+            SET name = $1, email = $2
+            WHERE id = $3
+        `, [
+            name.trim(),
+            email.trim(),
+            req.user.id
+        ]);
 
-    res.json(users);
+        res.json({ success: true });
+
+    } catch (error) {
+        console.error(error);
+        res.status(400).json({
+            error: "Cet email est peut-être déjà utilisé."
+        });
+    }
 });
 
-// ==========================================
-// PROFIL UTILISATEUR
-// ==========================================
+// =========================
+// UTILISATEURS
+// =========================
 
-app.get("/api/users/:id", (req, res) => {
-    const userId = Number(req.params.id);
-
-    const user = db.prepare(`
+app.get("/api/users", authMiddleware, async (req, res) => {
+    const result = await query(`
         SELECT id, name, email
         FROM users
-        WHERE id = ?
-    `).get(userId);
+        WHERE id != $1
+        ORDER BY name
+    `, [req.user.id]);
+
+    res.json(result.rows.map(user => ({
+        ...user,
+        online: onlineUsers.has(user.id)
+    })));
+});
+
+app.get("/api/users/search", authMiddleware, async (req, res) => {
+    const q = (req.query.q || "").trim();
+
+    if (!q) return res.json([]);
+
+    const result = await query(`
+        SELECT id, name, email
+        FROM users
+        WHERE id != $1
+        AND (
+            name ILIKE $2
+            OR email ILIKE $2
+        )
+        ORDER BY name
+    `, [
+        req.user.id,
+        `%${q}%`
+    ]);
+
+    res.json(result.rows.map(user => ({
+        ...user,
+        online: onlineUsers.has(user.id)
+    })));
+});
+
+app.get("/api/users/:id", authMiddleware, async (req, res) => {
+    const result = await query(`
+        SELECT id, name, email
+        FROM users
+        WHERE id = $1
+    `, [req.params.id]);
+
+    const user = result.rows[0];
 
     if (!user) {
         return res.status(404).json({
@@ -367,118 +383,53 @@ app.get("/api/users/:id", (req, res) => {
         });
     }
 
-    res.json(user);
-});
-
-// ==========================================
-// STATUT AMI
-// ==========================================
-
-app.get("/api/users/:id/friend-status", (req, res) => {
-    const currentUser = getUserFromToken(req);
-
-    if (!currentUser) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
-    const otherUserId = Number(req.params.id);
-
-    if (currentUser.id === otherUserId) {
-        return res.json({
-            status: "self"
-        });
-    }
-
-    const friendship = db.prepare(`
-        SELECT id
-        FROM friends
-        WHERE user_id = ?
-          AND friend_id = ?
-    `).get(currentUser.id, otherUserId);
-
-    if (friendship) {
-        return res.json({
-            status: "friends"
-        });
-    }
-
-    const outgoing = db.prepare(`
-        SELECT id
-        FROM friend_requests
-        WHERE sender_id = ?
-          AND receiver_id = ?
-          AND status = 'pending'
-    `).get(currentUser.id, otherUserId);
-
-    if (outgoing) {
-        return res.json({
-            status: "outgoing_pending",
-            requestId: outgoing.id
-        });
-    }
-
-    const incoming = db.prepare(`
-        SELECT id
-        FROM friend_requests
-        WHERE sender_id = ?
-          AND receiver_id = ?
-          AND status = 'pending'
-    `).get(otherUserId, currentUser.id);
-
-    if (incoming) {
-        return res.json({
-            status: "incoming_pending",
-            requestId: incoming.id
-        });
-    }
-
     res.json({
-        status: "none"
+        ...user,
+        online: onlineUsers.has(user.id)
     });
 });
 
-// ==========================================
-// POSTS
-// ==========================================
+app.get("/api/users/:id/online-status", authMiddleware, (req, res) => {
+    res.json({
+        online: onlineUsers.has(Number(req.params.id))
+    });
+});
 
-app.post("/api/posts", (req, res) => {
-    const user = getUserFromToken(req);
+// =========================
+// PUBLICATIONS
+// =========================
 
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
+app.post("/api/posts", authMiddleware, async (req, res) => {
     const content = (req.body.content || "").trim();
 
     if (!content) {
         return res.status(400).json({
-            error: "Le contenu est vide."
+            error: "La publication est vide."
         });
     }
 
-    const result = db.prepare(`
-        INSERT INTO posts
-        (user_id, content, created_at)
-        VALUES (?, ?, datetime('now', 'localtime'))
-    `).run(user.id, content);
+    const result = await query(`
+        INSERT INTO posts (user_id, content)
+        VALUES ($1, $2)
+        RETURNING id
+    `, [
+        req.user.id,
+        content
+    ]);
 
     res.json({
         success: true,
-        postId: result.lastInsertRowid
+        postId: result.rows[0].id
     });
 });
 
-app.get("/api/posts", (req, res) => {
-    const posts = db.prepare(`
+app.get("/api/posts", authMiddleware, async (req, res) => {
+    const result = await query(`
         SELECT
             posts.id,
-            posts.user_id,
             posts.content,
             posts.created_at,
+            users.id AS user_id,
             users.name,
 
             (
@@ -491,7 +442,14 @@ app.get("/api/posts", (req, res) => {
                 SELECT COUNT(*)
                 FROM comments
                 WHERE comments.post_id = posts.id
-            ) AS comments_count
+            ) AS comments_count,
+
+            EXISTS (
+                SELECT 1
+                FROM likes
+                WHERE likes.post_id = posts.id
+                AND likes.user_id = $1
+            ) AS liked
 
         FROM posts
 
@@ -499,76 +457,19 @@ app.get("/api/posts", (req, res) => {
         ON users.id = posts.user_id
 
         ORDER BY posts.id DESC
-    `).all();
+    `, [req.user.id]);
 
-    res.json(posts);
+    res.json(result.rows);
 });
 
-// ==========================================
-// LIKE
-// ==========================================
-
-app.post("/api/posts/:id/like", (req, res) => {
-    const user = getUserFromToken(req);
-
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
-    const postId = Number(req.params.id);
-
-    const existingLike = db.prepare(`
-        SELECT id
-        FROM likes
-        WHERE post_id = ?
-          AND user_id = ?
-    `).get(postId, user.id);
-
-    if (existingLike) {
-        db.prepare(`
-            DELETE FROM likes
-            WHERE post_id = ?
-              AND user_id = ?
-        `).run(postId, user.id);
-
-        return res.json({
-            liked: false
-        });
-    }
-
-    db.prepare(`
-        INSERT INTO likes
-        (post_id, user_id)
-        VALUES (?, ?)
-    `).run(postId, user.id);
-
-    res.json({
-        liked: true
-    });
-});
-
-// ==========================================
-// SUPPRIMER POST
-// ==========================================
-
-app.delete("/api/posts/:id", (req, res) => {
-    const user = getUserFromToken(req);
-
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
-    const postId = Number(req.params.id);
-
-    const post = db.prepare(`
+app.delete("/api/posts/:id", authMiddleware, async (req, res) => {
+    const result = await query(`
         SELECT *
         FROM posts
-        WHERE id = ?
-    `).get(postId);
+        WHERE id = $1
+    `, [req.params.id]);
+
+    const post = result.rows[0];
 
     if (!post) {
         return res.status(404).json({
@@ -576,107 +477,128 @@ app.delete("/api/posts/:id", (req, res) => {
         });
     }
 
-    if (post.user_id !== user.id) {
+    if (post.user_id !== req.user.id) {
         return res.status(403).json({
             error: "Vous ne pouvez pas supprimer cette publication."
         });
     }
 
-    db.prepare(`
-        DELETE FROM likes
-        WHERE post_id = ?
-    `).run(postId);
-
-    db.prepare(`
-        DELETE FROM comments
-        WHERE post_id = ?
-    `).run(postId);
-
-    db.prepare(`
+    await query(`
         DELETE FROM posts
-        WHERE id = ?
-    `).run(postId);
+        WHERE id = $1
+    `, [req.params.id]);
 
     res.json({
         success: true
     });
 });
 
-// ==========================================
-// COMMENTAIRES
-// ==========================================
+// =========================
+// LIKES
+// =========================
 
-app.get("/api/posts/:id/comments", (req, res) => {
+app.post("/api/posts/:id/like", authMiddleware, async (req, res) => {
     const postId = Number(req.params.id);
 
-    const comments = db.prepare(`
-        SELECT
-            comments.id,
-            comments.post_id,
-            comments.user_id,
-            comments.content,
-            comments.created_at,
-            users.name
+    const existing = await query(`
+        SELECT id
+        FROM likes
+        WHERE post_id = $1
+        AND user_id = $2
+    `, [
+        postId,
+        req.user.id
+    ]);
 
-        FROM comments
+    if (existing.rows.length > 0) {
+        await query(`
+            DELETE FROM likes
+            WHERE id = $1
+        `, [existing.rows[0].id]);
 
-        JOIN users
-        ON users.id = comments.user_id
-
-        WHERE comments.post_id = ?
-
-        ORDER BY comments.id ASC
-    `).all(postId);
-
-    res.json(comments);
-});
-
-app.post("/api/posts/:id/comments", (req, res) => {
-    const user = getUserFromToken(req);
-
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
+        return res.json({
+            liked: false
         });
     }
 
-    const postId = Number(req.params.id);
+    await query(`
+        INSERT INTO likes (post_id, user_id)
+        VALUES ($1, $2)
+    `, [
+        postId,
+        req.user.id
+    ]);
+
+    res.json({
+        liked: true
+    });
+});
+
+// =========================
+// COMMENTAIRES
+// =========================
+
+app.get("/api/posts/:id/comments", authMiddleware, async (req, res) => {
+    const result = await query(`
+        SELECT
+            comments.id,
+            comments.content,
+            comments.created_at,
+            users.id AS user_id,
+            users.name
+        FROM comments
+        JOIN users
+        ON users.id = comments.user_id
+        WHERE comments.post_id = $1
+        ORDER BY comments.id ASC
+    `, [req.params.id]);
+
+    res.json(result.rows);
+});
+
+app.post("/api/posts/:id/comments", authMiddleware, async (req, res) => {
     const content = (req.body.content || "").trim();
 
     if (!content) {
         return res.status(400).json({
-            error: "Le commentaire est vide."
+            error: "Commentaire vide."
         });
     }
 
-    const result = db.prepare(`
-        INSERT INTO comments
-        (post_id, user_id, content, created_at)
-        VALUES (?, ?, ?, datetime('now', 'localtime'))
-    `).run(postId, user.id, content);
+    const post = await query(`
+        SELECT id
+        FROM posts
+        WHERE id = $1
+    `, [req.params.id]);
+
+    if (!post.rows.length) {
+        return res.status(404).json({
+            error: "Publication introuvable."
+        });
+    }
+
+    await query(`
+        INSERT INTO comments (post_id, user_id, content)
+        VALUES ($1, $2, $3)
+    `, [
+        req.params.id,
+        req.user.id,
+        content
+    ]);
 
     res.json({
-        success: true,
-        commentId: result.lastInsertRowid
+        success: true
     });
 });
 
-app.delete("/api/comments/:id", (req, res) => {
-    const user = getUserFromToken(req);
-
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
-    const commentId = Number(req.params.id);
-
-    const comment = db.prepare(`
+app.delete("/api/comments/:id", authMiddleware, async (req, res) => {
+    const result = await query(`
         SELECT *
         FROM comments
-        WHERE id = ?
-    `).get(commentId);
+        WHERE id = $1
+    `, [req.params.id]);
+
+    const comment = result.rows[0];
 
     if (!comment) {
         return res.status(404).json({
@@ -684,166 +606,233 @@ app.delete("/api/comments/:id", (req, res) => {
         });
     }
 
-    if (comment.user_id !== user.id) {
+    if (comment.user_id !== req.user.id) {
         return res.status(403).json({
             error: "Vous ne pouvez pas supprimer ce commentaire."
         });
     }
 
-    db.prepare(`
+    await query(`
         DELETE FROM comments
-        WHERE id = ?
-    `).run(commentId);
+        WHERE id = $1
+    `, [req.params.id]);
 
     res.json({
         success: true
     });
 });
 
-// ==========================================
-// DEMANDES D'AMIS - ENVOYER
-// ==========================================
+// =========================
+// AMIS
+// =========================
 
-app.post("/api/friend-requests/:id", (req, res) => {
-    const user = getUserFromToken(req);
+app.get("/api/users/:id/friend-status", authMiddleware, async (req, res) => {
+    const targetId = Number(req.params.id);
 
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
+    if (targetId === req.user.id) {
+        return res.json({
+            status: "self"
         });
     }
 
+    const friendship = await query(`
+        SELECT id
+        FROM friends
+        WHERE user_id = $1
+        AND friend_id = $2
+    `, [
+        req.user.id,
+        targetId
+    ]);
+
+    if (friendship.rows.length) {
+        return res.json({
+            status: "friends"
+        });
+    }
+
+    const outgoing = await query(`
+        SELECT id
+        FROM friend_requests
+        WHERE sender_id = $1
+        AND receiver_id = $2
+        AND status = 'pending'
+    `, [
+        req.user.id,
+        targetId
+    ]);
+
+    if (outgoing.rows.length) {
+        return res.json({
+            status: "outgoing_pending",
+            requestId: outgoing.rows[0].id
+        });
+    }
+
+    const incoming = await query(`
+        SELECT id
+        FROM friend_requests
+        WHERE sender_id = $1
+        AND receiver_id = $2
+        AND status = 'pending'
+    `, [
+        targetId,
+        req.user.id
+    ]);
+
+    if (incoming.rows.length) {
+        return res.json({
+            status: "incoming_pending",
+            requestId: incoming.rows[0].id
+        });
+    }
+
+    res.json({
+        status: "none"
+    });
+});
+
+app.post("/api/friend-requests/:id", authMiddleware, async (req, res) => {
     const receiverId = Number(req.params.id);
 
-    if (receiverId === user.id) {
+    if (receiverId === req.user.id) {
         return res.status(400).json({
-            error: "Vous ne pouvez pas vous ajouter vous-même."
+            error: "Impossible de vous ajouter vous-même."
         });
     }
 
-    const receiver = db.prepare(`
-        SELECT id
+    const receiver = await query(`
+        SELECT id, name
         FROM users
-        WHERE id = ?
-    `).get(receiverId);
+        WHERE id = $1
+    `, [receiverId]);
 
-    if (!receiver) {
+    if (!receiver.rows.length) {
         return res.status(404).json({
             error: "Utilisateur introuvable."
         });
     }
 
-    const alreadyFriends = db.prepare(`
+    const existingFriend = await query(`
         SELECT id
         FROM friends
-        WHERE user_id = ?
-          AND friend_id = ?
-    `).get(user.id, receiverId);
+        WHERE user_id = $1
+        AND friend_id = $2
+    `, [
+        req.user.id,
+        receiverId
+    ]);
 
-    if (alreadyFriends) {
+    if (existingFriend.rows.length) {
         return res.status(400).json({
             error: "Vous êtes déjà amis."
         });
     }
 
-    const existingRequest = db.prepare(`
+    const existingRequest = await query(`
         SELECT id
         FROM friend_requests
-        WHERE sender_id = ?
-          AND receiver_id = ?
-          AND status = 'pending'
-    `).get(user.id, receiverId);
+        WHERE sender_id = $1
+        AND receiver_id = $2
+        AND status = 'pending'
+    `, [
+        req.user.id,
+        receiverId
+    ]);
 
-    if (existingRequest) {
+    if (existingRequest.rows.length) {
         return res.status(400).json({
             error: "Demande déjà envoyée."
         });
     }
 
-    const result = db.prepare(`
+    const reverseRequest = await query(`
+        SELECT id
+        FROM friend_requests
+        WHERE sender_id = $1
+        AND receiver_id = $2
+        AND status = 'pending'
+    `, [
+        receiverId,
+        req.user.id
+    ]);
+
+    if (reverseRequest.rows.length) {
+        return res.status(400).json({
+            error: "Cette personne vous a déjà envoyé une demande."
+        });
+    }
+
+    const result = await query(`
         INSERT INTO friend_requests
-        (sender_id, receiver_id, status)
-        VALUES (?, ?, 'pending')
-    `).run(user.id, receiverId);
+        (sender_id, receiver_id)
+        VALUES ($1, $2)
+        RETURNING id
+    `, [
+        req.user.id,
+        receiverId
+    ]);
 
-    // Notification temps réel
-    const receiverSocket = onlineUsers.get(receiverId);
+    const socketId = onlineUsers.get(receiverId);
 
-    if (receiverSocket) {
-        io.to(receiverSocket).emit("friend_request", {
-            requestId: result.lastInsertRowid,
-            sender: {
-                id: user.id,
-                name: user.name
-            }
+    if (socketId) {
+        io.to(socketId).emit("friend_request", {
+            requestId: result.rows[0].id,
+            senderId: req.user.id,
+            senderName: req.user.name
         });
     }
 
     res.json({
-        success: true,
-        requestId: result.lastInsertRowid
+        success: true
     });
 });
 
-// ==========================================
-// DEMANDES D'AMIS - LISTE
-// ==========================================
-
-app.get("/api/friend-requests", (req, res) => {
-    const user = getUserFromToken(req);
-
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
-    const requests = db.prepare(`
+app.get("/api/friend-requests", authMiddleware, async (req, res) => {
+    const result = await query(`
         SELECT
             friend_requests.id,
-            friend_requests.sender_id,
-            friend_requests.receiver_id,
-            friend_requests.status,
             friend_requests.created_at,
+            users.id AS user_id,
             users.name,
             users.email
-
         FROM friend_requests
-
         JOIN users
         ON users.id = friend_requests.sender_id
-
-        WHERE friend_requests.receiver_id = ?
-          AND friend_requests.status = 'pending'
-
+        WHERE friend_requests.receiver_id = $1
+        AND friend_requests.status = 'pending'
         ORDER BY friend_requests.id DESC
-    `).all(user.id);
+    `, [req.user.id]);
 
-    res.json(requests);
+    res.json(result.rows);
 });
 
-// ==========================================
-// ACCEPTER DEMANDE
-// ==========================================
+app.get("/api/friend-requests/count", authMiddleware, async (req, res) => {
+    const result = await query(`
+        SELECT COUNT(*)::int AS count
+        FROM friend_requests
+        WHERE receiver_id = $1
+        AND status = 'pending'
+    `, [req.user.id]);
 
-app.post("/api/friend-requests/:id/accept", (req, res) => {
-    const user = getUserFromToken(req);
+    res.json({
+        count: result.rows[0].count
+    });
+});
 
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
-    const requestId = Number(req.params.id);
-
-    const request = db.prepare(`
+app.post("/api/friend-requests/:id/accept", authMiddleware, async (req, res) => {
+    const result = await query(`
         SELECT *
         FROM friend_requests
-        WHERE id = ?
-          AND receiver_id = ?
-          AND status = 'pending'
-    `).get(requestId, user.id);
+        WHERE id = $1
+        AND receiver_id = $2
+        AND status = 'pending'
+    `, [
+        req.params.id,
+        req.user.id
+    ]);
+
+    const request = result.rows[0];
 
     if (!request) {
         return res.status(404).json({
@@ -851,30 +840,36 @@ app.post("/api/friend-requests/:id/accept", (req, res) => {
         });
     }
 
-    db.prepare(`
+    await query(`
         UPDATE friend_requests
         SET status = 'accepted'
-        WHERE id = ?
-    `).run(requestId);
+        WHERE id = $1
+    `, [request.id]);
 
-    db.prepare(`
-        INSERT OR IGNORE INTO friends
-        (user_id, friend_id)
-        VALUES (?, ?)
-    `).run(user.id, request.sender_id);
+    await query(`
+        INSERT INTO friends (user_id, friend_id)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id, friend_id) DO NOTHING
+    `, [
+        request.sender_id,
+        request.receiver_id
+    ]);
 
-    db.prepare(`
-        INSERT OR IGNORE INTO friends
-        (user_id, friend_id)
-        VALUES (?, ?)
-    `).run(request.sender_id, user.id);
+    await query(`
+        INSERT INTO friends (user_id, friend_id)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id, friend_id) DO NOTHING
+    `, [
+        request.receiver_id,
+        request.sender_id
+    ]);
 
-    const senderSocket = onlineUsers.get(request.sender_id);
+    const socketId = onlineUsers.get(request.sender_id);
 
-    if (senderSocket) {
-        io.to(senderSocket).emit("friend_request_accepted", {
-            userId: user.id,
-            name: user.name
+    if (socketId) {
+        io.to(socketId).emit("friend_request_accepted", {
+            userId: req.user.id,
+            userName: req.user.name
         });
     }
 
@@ -883,337 +878,402 @@ app.post("/api/friend-requests/:id/accept", (req, res) => {
     });
 });
 
-// ==========================================
-// REFUSER DEMANDE
-// ==========================================
+app.post("/api/friend-requests/:id/reject", authMiddleware, async (req, res) => {
+    const result = await query(`
+        SELECT id
+        FROM friend_requests
+        WHERE id = $1
+        AND receiver_id = $2
+        AND status = 'pending'
+    `, [
+        req.params.id,
+        req.user.id
+    ]);
 
-app.post("/api/friend-requests/:id/reject", (req, res) => {
-    const user = getUserFromToken(req);
-
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
-    const requestId = Number(req.params.id);
-
-    const result = db.prepare(`
-        UPDATE friend_requests
-        SET status = 'rejected'
-        WHERE id = ?
-          AND receiver_id = ?
-          AND status = 'pending'
-    `).run(requestId, user.id);
-
-    if (result.changes === 0) {
+    if (!result.rows.length) {
         return res.status(404).json({
             error: "Demande introuvable."
         });
     }
 
+    await query(`
+        UPDATE friend_requests
+        SET status = 'rejected'
+        WHERE id = $1
+    `, [req.params.id]);
+
     res.json({
         success: true
     });
 });
 
-// ==========================================
-// AMIS
-// ==========================================
-
-app.get("/api/friends", (req, res) => {
-    const user = getUserFromToken(req);
-
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
-    const friends = db.prepare(`
+app.get("/api/friends", authMiddleware, async (req, res) => {
+    const result = await query(`
         SELECT
             users.id,
             users.name,
             users.email
-
         FROM friends
-
         JOIN users
         ON users.id = friends.friend_id
+        WHERE friends.user_id = $1
+        ORDER BY users.name
+    `, [req.user.id]);
 
-        WHERE friends.user_id = ?
-
-        ORDER BY users.name ASC
-    `).all(user.id);
-
-    res.json(friends);
+    res.json(result.rows.map(friend => ({
+        ...friend,
+        online: onlineUsers.has(friend.id)
+    })));
 });
 
-app.delete("/api/friends/:id", (req, res) => {
-    const user = getUserFromToken(req);
-
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
+app.delete("/api/friends/:id", authMiddleware, async (req, res) => {
     const friendId = Number(req.params.id);
 
-    db.prepare(`
+    await query(`
         DELETE FROM friends
-        WHERE user_id = ?
-          AND friend_id = ?
-    `).run(user.id, friendId);
-
-    db.prepare(`
-        DELETE FROM friends
-        WHERE user_id = ?
-          AND friend_id = ?
-    `).run(friendId, user.id);
+        WHERE
+            (user_id = $1 AND friend_id = $2)
+            OR
+            (user_id = $2 AND friend_id = $1)
+    `, [
+        req.user.id,
+        friendId
+    ]);
 
     res.json({
         success: true
     });
 });
 
-// ==========================================
-// MESSAGERIE - ENVOYER
-// ==========================================
+// =========================
+// MESSAGES
+// =========================
 
-app.post("/api/messages", (req, res) => {
-    const user = getUserFromToken(req);
+app.get("/api/messages/unread-count", authMiddleware, async (req, res) => {
+    const result = await query(`
+        SELECT COUNT(*)::int AS count
+        FROM messages
+        WHERE receiver_id = $1
+        AND is_read = 0
+    `, [req.user.id]);
 
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
+    res.json({
+        count: result.rows[0].count
+    });
+});
 
+app.post("/api/messages", authMiddleware, async (req, res) => {
     const receiverId = Number(req.body.receiver_id);
     const content = (req.body.content || "").trim();
 
     if (!receiverId || !content) {
         return res.status(400).json({
-            error: "Destinataire ou message manquant."
+            error: "Destinataire et message obligatoires."
         });
     }
 
-    if (receiverId === user.id) {
+    if (receiverId === req.user.id) {
         return res.status(400).json({
             error: "Vous ne pouvez pas vous envoyer un message."
         });
     }
 
-    const receiver = db.prepare(`
-        SELECT id
+    const receiver = await query(`
+        SELECT id, name
         FROM users
-        WHERE id = ?
-    `).get(receiverId);
+        WHERE id = $1
+    `, [receiverId]);
 
-    if (!receiver) {
+    if (!receiver.rows.length) {
         return res.status(404).json({
             error: "Destinataire introuvable."
         });
     }
 
-    const result = db.prepare(`
+    const result = await query(`
         INSERT INTO messages
         (sender_id, receiver_id, content, created_at, is_read)
-        VALUES (?, ?, ?, datetime('now', 'localtime'), 0)
-    `).run(user.id, receiverId, content);
+        VALUES ($1, $2, $3, CURRENT_TIMESTAMP, 0)
+        RETURNING id, created_at
+    `, [
+        req.user.id,
+        receiverId,
+        content
+    ]);
 
-    // ==========================================
-    // NOTIFICATION TEMPS RÉEL
-    // ==========================================
+    const message = {
+        messageId: result.rows[0].id,
+        senderId: req.user.id,
+        senderName: req.user.name,
+        receiverId,
+        content,
+        createdAt: result.rows[0].created_at
+    };
 
-    const receiverSocket = onlineUsers.get(receiverId);
+    const socketId = onlineUsers.get(receiverId);
 
-    if (receiverSocket) {
-        io.to(receiverSocket).emit("new_message", {
-            messageId: result.lastInsertRowid,
-            senderId: user.id,
-            senderName: user.name,
-            receiverId: receiverId,
-            content: content
-        });
+    if (socketId) {
+        io.to(socketId).emit("new_message", message);
     }
 
     res.json({
         success: true,
-        messageId: result.lastInsertRowid
+        message
     });
 });
 
-// ==========================================
-// NOMBRE DE MESSAGES NON LUS
-// IMPORTANT : cette route doit être AVANT /:userId
-// ==========================================
-
-app.get("/api/messages/unread-count", (req, res) => {
-    const user = getUserFromToken(req);
-
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
-    const result = db.prepare(`
-        SELECT COUNT(*) AS unread_count
-        FROM messages
-        WHERE receiver_id = ?
-          AND is_read = 0
-    `).get(user.id);
-
-    res.json({
-        unread_count: result.unread_count
-    });
-});
-
-// ==========================================
-// MESSAGERIE - CONVERSATION
-// ==========================================
-
-app.get("/api/messages/:userId", (req, res) => {
-    const user = getUserFromToken(req);
-
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
+app.get("/api/messages/:userId", authMiddleware, async (req, res) => {
     const otherUserId = Number(req.params.userId);
 
-    const otherUser = db.prepare(`
+    const otherUser = await query(`
         SELECT id, name, email
         FROM users
-        WHERE id = ?
-    `).get(otherUserId);
+        WHERE id = $1
+    `, [otherUserId]);
 
-    if (!otherUser) {
+    if (!otherUser.rows.length) {
         return res.status(404).json({
             error: "Utilisateur introuvable."
         });
     }
 
-    db.prepare(`
-        UPDATE messages
-        SET is_read = 1
-        WHERE sender_id = ?
-          AND receiver_id = ?
-          AND is_read = 0
-    `).run(otherUserId, user.id);
-
-    const messages = db.prepare(`
+    const result = await query(`
         SELECT
             messages.id,
-            messages.content,
-            messages.created_at,
             messages.sender_id,
             messages.receiver_id,
+            messages.content,
+            messages.created_at,
             messages.is_read,
             sender.name AS sender_name,
             receiver.name AS receiver_name
-
         FROM messages
-
         JOIN users AS sender
         ON sender.id = messages.sender_id
-
         JOIN users AS receiver
         ON receiver.id = messages.receiver_id
-
         WHERE
             (
-                messages.sender_id = ?
-                AND messages.receiver_id = ?
+                messages.sender_id = $1
+                AND messages.receiver_id = $2
             )
             OR
             (
-                messages.sender_id = ?
-                AND messages.receiver_id = ?
+                messages.sender_id = $2
+                AND messages.receiver_id = $1
             )
-
         ORDER BY messages.id ASC
-    `).all(
-        user.id,
-        otherUserId,
-        otherUserId,
-        user.id
-    );
+    `, [
+        req.user.id,
+        otherUserId
+    ]);
 
-    res.json({
-        user: otherUser,
-        messages
-    });
+    await query(`
+        UPDATE messages
+        SET is_read = 1
+        WHERE sender_id = $1
+        AND receiver_id = $2
+        AND is_read = 0
+    `, [
+        otherUserId,
+        req.user.id
+    ]);
+
+    res.json(result.rows);
 });
 
-// ==========================================
-// MESSAGERIE - CONVERSATIONS
-// ==========================================
-
-app.get("/api/conversations", (req, res) => {
-    const user = getUserFromToken(req);
-
-    if (!user) {
-        return res.status(401).json({
-            error: "Non connecté."
-        });
-    }
-
-    const conversations = db.prepare(`
+app.get("/api/conversations", authMiddleware, async (req, res) => {
+    const result = await query(`
         SELECT
             u.id,
             u.name,
             u.email,
-            m.content AS last_message,
-            m.created_at,
+            MAX(m.created_at) AS last_message_at,
 
             (
-                SELECT COUNT(*)
-                FROM messages AS unread
-                WHERE unread.sender_id = u.id
-                  AND unread.receiver_id = ?
-                  AND unread.is_read = 0
+                SELECT m2.content
+                FROM messages m2
+                WHERE
+                    (
+                        m2.sender_id = $1
+                        AND m2.receiver_id = u.id
+                    )
+                    OR
+                    (
+                        m2.sender_id = u.id
+                        AND m2.receiver_id = $1
+                    )
+                ORDER BY m2.id DESC
+                LIMIT 1
+            ) AS last_message,
+
+            (
+                SELECT COUNT(*)::int
+                FROM messages m3
+                WHERE m3.sender_id = u.id
+                AND m3.receiver_id = $1
+                AND m3.is_read = 0
             ) AS unread_count
 
-        FROM users AS u
+        FROM users u
 
-        JOIN messages AS m
-        ON m.id = (
-            SELECT MAX(m2.id)
-            FROM messages AS m2
-            WHERE
-                (
-                    m2.sender_id = ?
-                    AND m2.receiver_id = u.id
-                )
-                OR
-                (
-                    m2.sender_id = u.id
-                    AND m2.receiver_id = ?
-                )
-        )
+        JOIN messages m
+        ON
+            (
+                m.sender_id = $1
+                AND m.receiver_id = u.id
+            )
+            OR
+            (
+                m.sender_id = u.id
+                AND m.receiver_id = $1
+            )
 
-        WHERE u.id != ?
+        GROUP BY u.id, u.name, u.email
+        ORDER BY last_message_at DESC
+    `, [req.user.id]);
 
-        ORDER BY m.id DESC
-    `).all(
-        user.id,
-        user.id,
-        user.id,
-        user.id
+    res.json(result.rows.map(conversation => ({
+        ...conversation,
+        online: onlineUsers.has(conversation.id)
+    })));
+});
+
+// =========================
+// NOTIFICATIONS
+// =========================
+
+function sendUserNotification(userId, type, data) {
+    const socketId = onlineUsers.get(Number(userId));
+
+    if (!socketId) return;
+
+    io.to(socketId).emit(type, data);
+}
+
+// =========================
+// SOCKET.IO
+// =========================
+
+io.on("connection", async (socket) => {
+    try {
+        const token = socket.handshake.auth.token;
+        const user = await getUserFromToken(token);
+
+        if (!user) {
+            socket.disconnect();
+            return;
+        }
+
+        const userId = user.id;
+
+        const previousSocketId = onlineUsers.get(userId);
+
+        if (
+            previousSocketId &&
+            previousSocketId !== socket.id
+        ) {
+            const previousSocket =
+                io.sockets.sockets.get(previousSocketId);
+
+            if (previousSocket) {
+                previousSocket.disconnect();
+            }
+        }
+
+        onlineUsers.set(userId, socket.id);
+
+        console.log(`🟢 ${user.name} est en ligne.`);
+
+        socket.broadcast.emit("user_online", {
+            userId,
+            userName: user.name
+        });
+
+        socket.on("friend_request_sent", (data) => {
+            if (!data || !data.receiverId) return;
+
+            sendUserNotification(
+                data.receiverId,
+                "friend_request",
+                {
+                    senderId: userId,
+                    senderName: user.name
+                }
+            );
+        });
+
+        socket.on("message_sent", (data) => {
+            if (!data || !data.receiverId) return;
+
+            sendUserNotification(
+                data.receiverId,
+                "new_message",
+                {
+                    messageId: data.messageId,
+                    senderId: userId,
+                    senderName: user.name,
+                    receiverId: data.receiverId,
+                    content: data.content
+                }
+            );
+        });
+
+        socket.on("disconnect", () => {
+            if (onlineUsers.get(userId) === socket.id) {
+                onlineUsers.delete(userId);
+
+                console.log(`⚫ ${user.name} est hors ligne.`);
+
+                socket.broadcast.emit("user_offline", {
+                    userId,
+                    userName: user.name
+                });
+            }
+        });
+
+    } catch (error) {
+        console.error("Socket error:", error);
+        socket.disconnect();
+    }
+});
+
+// =========================
+// PAGE PRINCIPALE
+// =========================
+
+app.get("/", (req, res) => {
+    res.sendFile(
+        path.join(__dirname, "index.html")
     );
-
-    res.json(conversations);
 });
 
-// ==========================================
-// SERVEUR
-// ==========================================
+// =========================
+// DÉMARRAGE
+// =========================
 
-server.listen(PORT, () => {
-    console.log(`CommunityOS fonctionne sur http://localhost:${PORT}`);
-});
+async function startServer() {
+    try {
+        await initDatabase();
+
+        server.listen(
+            PORT,
+            "0.0.0.0",
+            () => {
+                console.log(
+                    `🚀 CommunityOS démarré sur le port ${PORT}`
+                );
+            }
+        );
+
+    } catch (error) {
+        console.error(
+            "❌ Impossible de démarrer CommunityOS :",
+            error
+        );
+
+        process.exit(1);
+    }
+}
+
+startServer();
