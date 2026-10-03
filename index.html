@@ -1,0 +1,2079 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>CommunityOS</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f0f2f5;
+            color: #222;
+        }
+
+        header {
+            background: #1877f2;
+            color: white;
+            padding: 15px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            margin: 0;
+        }
+
+        button {
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:disabled {
+            cursor: default;
+            opacity: 0.8;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 25px auto;
+            padding: 0 15px;
+        }
+
+        .box {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 15px;
+        }
+
+        textarea {
+            min-height: 90px;
+            resize: vertical;
+        }
+
+        .primary {
+            background: #1877f2;
+            color: white;
+        }
+
+        .success {
+            background: #42b72a;
+            color: white;
+        }
+
+        .danger {
+            background: #e53935;
+            color: white;
+        }
+
+        .secondary {
+            background: #e4e6eb;
+            color: #222;
+        }
+
+        .post {
+            border-top: 1px solid #ddd;
+            padding-top: 15px;
+            margin-top: 15px;
+        }
+
+        .post-author {
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .post-date {
+            color: #777;
+            font-size: 13px;
+            margin-top: 3px;
+            margin-bottom: 10px;
+        }
+
+        .post-content {
+            margin: 10px 0;
+            white-space: pre-wrap;
+        }
+
+        .post-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .comment {
+            background: #f0f2f5;
+            padding: 8px;
+            border-radius: 8px;
+            margin-top: 7px;
+        }
+
+        .search-result {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            cursor: pointer;
+        }
+
+        .search-result:hover {
+            background: #f0f2f5;
+        }
+
+        .profile-name {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .profile-email {
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        #friendRequestCount {
+            display: none;
+            background: #e53935;
+            color: white;
+            border-radius: 50%;
+            padding: 3px 8px;
+            font-size: 13px;
+            margin-left: 5px;
+        }
+
+        #messageUnreadCount {
+            display: none;
+            background: #e53935;
+            color: white;
+            border-radius: 50%;
+            padding: 3px 8px;
+            font-size: 13px;
+            margin-left: 5px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .status-button {
+            margin-top: 10px;
+            margin-right: 5px;
+        }
+
+        /* =========================
+           MESSAGERIE
+        ========================= */
+
+        .messaging-title {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .conversation-item {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+            cursor: pointer;
+            border-radius: 8px;
+        }
+
+        .conversation-item:hover {
+            background: #f0f2f5;
+        }
+
+        .conversation-name {
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .conversation-last-message {
+            color: #666;
+            margin-top: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .conversation-date {
+            color: #888;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .conversation-unread {
+            display: inline-block;
+            background: #e53935;
+            color: white;
+            border-radius: 50%;
+            padding: 3px 8px;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+
+        #messagesContainer {
+            background: #f0f2f5;
+            border-radius: 10px;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+
+        .message {
+            max-width: 75%;
+            padding: 10px 13px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .message-mine {
+            background: #1877f2;
+            color: white;
+            margin-left: auto;
+        }
+
+        .message-other {
+            background: white;
+            color: #222;
+            margin-right: auto;
+        }
+
+        .message-date {
+            font-size: 11px;
+            margin-top: 5px;
+            opacity: 0.7;
+        }
+
+        .message-form {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .message-form input {
+            margin: 0;
+            flex: 1;
+        }
+
+        .message-form button {
+            flex-shrink: 0;
+        }
+
+        .conversation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .conversation-header h3 {
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <h1>CommunityOS</h1>
+
+    <div>
+        <span id="currentUserName"></span>
+        <button class="secondary" onclick="logout()">Déconnexion</button>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- CONNEXION -->
+
+    <div id="loginSection" class="box">
+
+        <h2>Connexion</h2>
+
+        <input
+            type="email"
+            id="loginEmail"
+            placeholder="Email"
+        >
+
+        <input
+            type="password"
+            id="loginPassword"
+            placeholder="Mot de passe"
+        >
+
+        <button class="primary" onclick="login()">
+            Se connecter
+        </button>
+
+        <p id="loginMessage"></p>
+
+        <hr>
+
+        <h2>Créer un compte</h2>
+
+        <input
+            type="text"
+            id="registerName"
+            placeholder="Nom"
+        >
+
+        <input
+            type="email"
+            id="registerEmail"
+            placeholder="Email"
+        >
+
+        <input
+            type="password"
+            id="registerPassword"
+            placeholder="Mot de passe"
+        >
+
+        <button class="success" onclick="register()">
+            Créer mon compte
+        </button>
+
+        <p id="registerMessage"></p>
+
+    </div>
+
+    <!-- APPLICATION -->
+
+    <div id="appSection" class="hidden">
+
+        <!-- RECHERCHE -->
+
+        <div class="box">
+
+            <h2>🔎 Rechercher un utilisateur</h2>
+
+            <input
+                type="text"
+                id="searchInput"
+                placeholder="Nom ou email..."
+                oninput="searchUsers()"
+            >
+
+            <div id="searchResults"></div>
+
+        </div>
+
+        <!-- PROFIL -->
+
+        <div id="profileSection" class="box hidden">
+
+            <button
+                class="secondary"
+                onclick="closeProfile()"
+            >
+                ← Retour
+            </button>
+
+            <div id="profileContent"></div>
+
+        </div>
+
+        <!-- MESSAGERIE -->
+
+        <div id="messagingSection" class="box hidden">
+
+            <div class="conversation-header">
+
+                <h2 class="messaging-title">
+                    💬 Messagerie
+                    <span id="messageUnreadCount">0</span>
+                </h2>
+
+                <button
+                    class="secondary"
+                    onclick="closeMessaging()"
+                >
+                    ✕ Fermer
+                </button>
+
+            </div>
+
+            <div id="conversationListSection">
+
+                <h3>Mes conversations</h3>
+
+                <div id="conversationsList"></div>
+
+            </div>
+
+            <div id="conversationSection" class="hidden">
+
+                <div class="conversation-header">
+
+                    <h3 id="conversationUserName">
+                        Conversation
+                    </h3>
+
+                    <button
+                        class="secondary"
+                        onclick="backToConversations()"
+                    >
+                        ← Conversations
+                    </button>
+
+                </div>
+
+                <div id="messagesContainer"></div>
+
+                <div class="message-form">
+
+                    <input
+                        type="text"
+                        id="messageInput"
+                        placeholder="Écrire un message..."
+                        onkeydown="handleMessageKey(event)"
+                    >
+
+                    <button
+                        class="primary"
+                        onclick="sendMessage()"
+                    >
+                        Envoyer
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- DEMANDES -->
+
+        <div class="box">
+
+            <h2>
+                🔔 Demandes d'amis
+                <span id="friendRequestCount">0</span>
+            </h2>
+
+            <div id="friendRequests"></div>
+
+        </div>
+
+        <!-- AMIS -->
+
+        <div class="box">
+
+            <h2>👥 Mes amis</h2>
+
+            <div id="friendsList"></div>
+
+        </div>
+
+        <!-- CRÉER UN POST -->
+
+        <div class="box">
+
+            <h2>Créer une publication</h2>
+
+            <textarea
+                id="postContent"
+                placeholder="À quoi pensez-vous ?"
+            ></textarea>
+
+            <button
+                class="primary"
+                onclick="createPost()"
+            >
+                Publier
+            </button>
+
+        </div>
+
+        <!-- POSTS -->
+
+        <div class="box">
+
+            <h2>📰 Publications</h2>
+
+            <div id="posts"></div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+let currentUser = null;
+let currentConversationUserId = null;
+
+// ==========================================
+// INSCRIPTION
+// ==========================================
+
+async function register() {
+
+    const name = document.getElementById("registerName").value;
+    const email = document.getElementById("registerEmail").value;
+    const password = document.getElementById("registerPassword").value;
+
+    const response = await fetch("/api/register", {
+
+        method: "POST",
+
+        headers: {
+            "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify({
+            name,
+            email,
+            password
+        })
+
+    });
+
+    const data = await response.json();
+
+    const message = document.getElementById("registerMessage");
+
+    if (response.ok) {
+
+        message.textContent = "Compte créé avec succès !";
+
+        document.getElementById("registerName").value = "";
+        document.getElementById("registerEmail").value = "";
+        document.getElementById("registerPassword").value = "";
+
+    } else {
+
+        message.textContent = data.error;
+
+    }
+}
+
+// ==========================================
+// CONNEXION
+// ==========================================
+
+async function login() {
+
+    const email = document.getElementById("loginEmail").value;
+    const password = document.getElementById("loginPassword").value;
+
+    const response = await fetch("/api/login", {
+
+        method: "POST",
+
+        headers: {
+            "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify({
+            email,
+            password
+        })
+
+    });
+
+    const data = await response.json();
+
+    const message = document.getElementById("loginMessage");
+
+    if (!response.ok) {
+
+        message.textContent = data.error;
+        return;
+
+    }
+
+    localStorage.setItem("token", data.token);
+
+    currentUser = data.user;
+
+    showApp();
+
+}
+
+// ==========================================
+// CHARGER UTILISATEUR
+// ==========================================
+
+async function loadCurrentUser() {
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+        return;
+    }
+
+    const response = await fetch("/api/me", {
+
+        headers: {
+            "Authorization": token
+        }
+
+    });
+
+    if (!response.ok) {
+
+        localStorage.removeItem("token");
+        return;
+
+    }
+
+    currentUser = await response.json();
+
+    showApp();
+
+}
+
+// ==========================================
+// AFFICHER APPLICATION
+// ==========================================
+
+function showApp() {
+
+    document.getElementById("loginSection").classList.add("hidden");
+
+    document.getElementById("appSection").classList.remove("hidden");
+
+    document.getElementById("currentUserName").textContent =
+        currentUser.name;
+
+    loadPosts();
+    loadFriendRequests();
+    loadFriendRequestCount();
+    loadFriends();
+    loadConversations();
+    loadUnreadMessageCount();
+
+    // Vérifier régulièrement les nouveaux messages
+    startUnreadMessageChecker();
+
+}
+
+// ==========================================
+// DÉCONNEXION
+// ==========================================
+
+async function logout() {
+
+    const token = localStorage.getItem("token");
+
+    await fetch("/api/logout", {
+
+        method: "POST",
+
+        headers: {
+            "Authorization": token
+        }
+
+    });
+
+    localStorage.removeItem("token");
+
+    currentUser = null;
+
+    location.reload();
+}
+
+// ==========================================
+// RECHERCHE
+// ==========================================
+
+async function searchUsers() {
+
+    const q = document.getElementById("searchInput").value;
+
+    const results = document.getElementById("searchResults");
+
+    if (!q.trim()) {
+
+        results.innerHTML = "";
+        return;
+
+    }
+
+    const response = await fetch(
+        "/api/users/search?q=" + encodeURIComponent(q)
+    );
+
+    const users = await response.json();
+
+    results.innerHTML = "";
+
+    users.forEach(user => {
+
+        const div = document.createElement("div");
+
+        div.className = "search-result";
+
+        div.innerHTML = `
+            <strong>${escapeHtml(user.name)}</strong><br>
+            <small>${escapeHtml(user.email)}</small>
+        `;
+
+        div.onclick = () => showUserProfile(user.id);
+
+        results.appendChild(div);
+
+    });
+}
+
+// ==========================================
+// PROFIL
+// ==========================================
+
+async function showUserProfile(userId) {
+
+    const response = await fetch(
+        `/api/users/${userId}`
+    );
+
+    if (!response.ok) {
+        return;
+    }
+
+    const user = await response.json();
+
+    document.getElementById("profileSection")
+        .classList.remove("hidden");
+
+    document.getElementById("profileContent").innerHTML = `
+        <div class="profile-name">
+            ${escapeHtml(user.name)}
+        </div>
+
+        <div class="profile-email">
+            ${escapeHtml(user.email)}
+        </div>
+
+        <div id="friendStatusArea">
+            Chargement...
+        </div>
+    `;
+
+    const statusResponse = await fetch(
+        `/api/users/${userId}/friend-status`,
+        {
+            headers: {
+                "Authorization": localStorage.getItem("token")
+            }
+        }
+    );
+
+    if (!statusResponse.ok) {
+
+        document.getElementById("friendStatusArea").innerHTML =
+            "<p>Impossible de récupérer le statut.</p>";
+
+        return;
+    }
+
+    const statusData = await statusResponse.json();
+
+    const area = document.getElementById("friendStatusArea");
+
+    if (statusData.status === "self") {
+
+        area.innerHTML = `
+            <p>👤 C'est votre profil.</p>
+        `;
+
+        return;
+    }
+
+    if (statusData.status === "friends") {
+
+        area.innerHTML = `
+            <button
+                class="success status-button"
+                disabled
+            >
+                ✅ Amis
+            </button>
+
+            <button
+                class="primary status-button"
+                onclick="openConversation(${user.id})"
+            >
+                💬 Message
+            </button>
+        `;
+
+        return;
+    }
+
+    if (statusData.status === "outgoing_pending") {
+
+        area.innerHTML = `
+            <button
+                class="secondary status-button"
+                disabled
+            >
+                ⏳ Demande envoyée
+            </button>
+
+            <button
+                class="primary status-button"
+                onclick="openConversation(${user.id})"
+            >
+                💬 Message
+            </button>
+        `;
+
+        return;
+    }
+
+    if (statusData.status === "incoming_pending") {
+
+        area.innerHTML = `
+            <button
+                class="success status-button"
+                onclick="acceptFriendRequestFromProfile(${statusData.requestId})"
+            >
+                ✓ Accepter la demande
+            </button>
+
+            <button
+                class="danger status-button"
+                onclick="rejectFriendRequestFromProfile(${statusData.requestId})"
+            >
+                ✕ Refuser
+            </button>
+
+            <button
+                class="primary status-button"
+                onclick="openConversation(${user.id})"
+            >
+                💬 Message
+            </button>
+        `;
+
+        return;
+    }
+
+    if (statusData.status === "none") {
+
+        area.innerHTML = `
+            <button
+                class="primary status-button"
+                onclick="sendFriendRequest(${userId}, this)"
+            >
+                ➕ Ajouter comme ami
+            </button>
+
+            <button
+                class="primary status-button"
+                onclick="openConversation(${user.id})"
+            >
+                💬 Message
+            </button>
+        `;
+    }
+}
+
+// ==========================================
+// OUVRIR UNE CONVERSATION
+// ==========================================
+
+async function openConversation(userId) {
+
+    currentConversationUserId = userId;
+
+    document.getElementById("messagingSection")
+        .classList.remove("hidden");
+
+    document.getElementById("profileSection")
+        .classList.add("hidden");
+
+    document.getElementById("conversationListSection")
+        .classList.add("hidden");
+
+    document.getElementById("conversationSection")
+        .classList.remove("hidden");
+
+    document.getElementById("messagesContainer").innerHTML =
+        "<p>Chargement...</p>";
+
+    const response = await fetch(
+        `/api/messages/${userId}`,
+        {
+            headers: {
+                "Authorization": localStorage.getItem("token")
+            }
+        }
+    );
+
+    if (!response.ok) {
+
+        document.getElementById("messagesContainer").innerHTML =
+            "<p>Impossible de charger la conversation.</p>";
+
+        return;
+    }
+
+    const data = await response.json();
+
+    document.getElementById("conversationUserName").textContent =
+        "💬 " + data.user.name;
+
+    displayMessages(data.messages);
+
+    // Le message vient d'être lu
+    loadUnreadMessageCount();
+
+    loadConversations();
+
+    document.getElementById("messageInput").focus();
+}
+
+// ==========================================
+// AFFICHER LES MESSAGES
+// ==========================================
+
+function displayMessages(messages) {
+
+    const container =
+        document.getElementById("messagesContainer");
+
+    container.innerHTML = "";
+
+    if (messages.length === 0) {
+
+        container.innerHTML = `
+            <p style="text-align:center;color:#777;">
+                Aucun message pour le moment.<br>
+                Commencez la conversation !
+            </p>
+        `;
+
+        return;
+    }
+
+    messages.forEach(message => {
+
+        const div = document.createElement("div");
+
+        const isMine =
+            currentUser &&
+            message.sender_id === currentUser.id;
+
+        div.className =
+            isMine
+                ? "message message-mine"
+                : "message message-other";
+
+        div.innerHTML = `
+            <div>
+                ${escapeHtml(message.content)}
+            </div>
+
+            <div class="message-date">
+                ${formatMessageDate(message.created_at)}
+            </div>
+        `;
+
+        container.appendChild(div);
+
+    });
+
+    container.scrollTop = container.scrollHeight;
+}
+
+// ==========================================
+// ENVOYER UN MESSAGE
+// ==========================================
+
+async function sendMessage() {
+
+    if (!currentConversationUserId) {
+        return;
+    }
+
+    const input = document.getElementById("messageInput");
+    const content = input.value.trim();
+
+    if (!content) {
+        return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    try {
+
+        const response = await fetch("/api/messages", {
+
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": token
+            },
+
+            body: JSON.stringify({
+                receiver_id: currentConversationUserId,
+                content: content
+            })
+
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+
+            alert(data.error || "Erreur lors de l'envoi du message.");
+            return;
+
+        }
+
+        input.value = "";
+
+        await loadConversationMessages();
+
+        await loadConversations();
+
+        await loadUnreadMessageCount();
+
+    } catch (error) {
+
+        console.error("Erreur envoi message :", error);
+
+        alert("Impossible d'envoyer le message.");
+    }
+}
+
+// ==========================================
+// RECHARGER LES MESSAGES
+// ==========================================
+
+async function loadConversationMessages() {
+
+    if (!currentConversationUserId) {
+        return;
+    }
+
+    const response = await fetch(
+        `/api/messages/${currentConversationUserId}`,
+        {
+            headers: {
+                "Authorization": localStorage.getItem("token")
+            }
+        }
+    );
+
+    if (!response.ok) {
+        return;
+    }
+
+    const data = await response.json();
+
+    document.getElementById("conversationUserName").textContent =
+        "💬 " + data.user.name;
+
+    displayMessages(data.messages);
+
+    loadUnreadMessageCount();
+}
+
+// ==========================================
+// TOUCHE ENTRÉE
+// ==========================================
+
+function handleMessageKey(event) {
+
+    if (event.key === "Enter") {
+
+        event.preventDefault();
+
+        sendMessage();
+
+    }
+}
+
+// ==========================================
+// LISTE DES CONVERSATIONS
+// ==========================================
+
+async function loadConversations() {
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+        return;
+    }
+
+    const response = await fetch(
+        "/api/conversations",
+        {
+            headers: {
+                "Authorization": token
+            }
+        }
+    );
+
+    if (!response.ok) {
+        return;
+    }
+
+    const conversations = await response.json();
+
+    const container =
+        document.getElementById("conversationsList");
+
+    container.innerHTML = "";
+
+    if (conversations.length === 0) {
+
+        container.innerHTML = `
+            <p>
+                Vous n'avez pas encore de conversation.
+            </p>
+        `;
+
+        return;
+    }
+
+    conversations.forEach(conversation => {
+
+        const div = document.createElement("div");
+
+        div.className = "conversation-item";
+
+        const unreadBadge =
+            conversation.unread_count > 0
+                ? `<span class="conversation-unread">${conversation.unread_count}</span>`
+                : "";
+
+        div.innerHTML = `
+            <div class="conversation-name">
+                💬 ${escapeHtml(conversation.name)}
+                ${unreadBadge}
+            </div>
+
+            <div class="conversation-last-message">
+                ${escapeHtml(conversation.last_message)}
+            </div>
+
+            <div class="conversation-date">
+                🕒 ${formatMessageDate(conversation.created_at)}
+            </div>
+        `;
+
+        div.onclick = () =>
+            openConversation(conversation.id);
+
+        container.appendChild(div);
+
+    });
+}
+
+// ==========================================
+// COMPTEUR MESSAGES NON LUS
+// ==========================================
+
+function updateMessageUnreadCount(count) {
+
+    const counter =
+        document.getElementById("messageUnreadCount");
+
+    if (!counter) {
+        return;
+    }
+
+    counter.textContent = count;
+
+    if (count > 0) {
+
+        counter.style.display = "inline-block";
+
+    } else {
+
+        counter.style.display = "none";
+
+    }
+}
+
+async function loadUnreadMessageCount() {
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "/api/messages/unread-count",
+            {
+                headers: {
+                    "Authorization": token
+                }
+            }
+        );
+
+        if (!response.ok) {
+            return;
+        }
+
+        const data = await response.json();
+
+        updateMessageUnreadCount(data.unread_count);
+
+    } catch (error) {
+
+        console.error(
+            "Erreur compteur messages :",
+            error
+        );
+
+    }
+}
+
+// ==========================================
+// VÉRIFICATION AUTOMATIQUE
+// ==========================================
+
+let unreadMessageInterval = null;
+
+function startUnreadMessageChecker() {
+
+    if (unreadMessageInterval) {
+        clearInterval(unreadMessageInterval);
+    }
+
+    unreadMessageInterval = setInterval(() => {
+
+        loadUnreadMessageCount();
+
+        loadConversations();
+
+    }, 5000);
+}
+
+// ==========================================
+// RETOUR AUX CONVERSATIONS
+// ==========================================
+
+function backToConversations() {
+
+    currentConversationUserId = null;
+
+    document.getElementById("conversationSection")
+        .classList.add("hidden");
+
+    document.getElementById("conversationListSection")
+        .classList.remove("hidden");
+
+    loadConversations();
+
+    loadUnreadMessageCount();
+}
+
+// ==========================================
+// FERMER MESSAGERIE
+// ==========================================
+
+function closeMessaging() {
+
+    currentConversationUserId = null;
+
+    document.getElementById("messagingSection")
+        .classList.add("hidden");
+
+    document.getElementById("conversationSection")
+        .classList.add("hidden");
+
+    document.getElementById("conversationListSection")
+        .classList.remove("hidden");
+
+}
+
+// ==========================================
+// DATE DES MESSAGES
+// ==========================================
+
+function formatMessageDate(dateString) {
+
+    const date = new Date(dateString);
+
+    if (isNaN(date.getTime())) {
+        return "Date inconnue";
+    }
+
+    return date.toLocaleString("fr-FR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+}
+
+// ==========================================
+// DEMANDE D'AMI
+// ==========================================
+
+async function sendFriendRequest(userId, button) {
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+        `/api/friend-requests/${userId}`,
+        {
+
+            method: "POST",
+
+            headers: {
+                "Authorization": token
+            }
+
+        }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+        alert(data.error);
+        return;
+
+    }
+
+    button.textContent = "⏳ Demande envoyée";
+    button.disabled = true;
+    button.className = "secondary status-button";
+
+    loadFriendRequestCount();
+
+}
+
+// ==========================================
+// ACCEPTER DEPUIS PROFIL
+// ==========================================
+
+async function acceptFriendRequestFromProfile(requestId) {
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+        `/api/friend-requests/${requestId}/accept`,
+        {
+
+            method: "POST",
+
+            headers: {
+                "Authorization": token
+            }
+
+        }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+        alert(data.error);
+        return;
+
+    }
+
+    alert("Demande acceptée !");
+
+    loadFriendRequests();
+    loadFriendRequestCount();
+    loadFriends();
+
+    location.reload();
+}
+
+// ==========================================
+// REFUSER DEPUIS PROFIL
+// ==========================================
+
+async function rejectFriendRequestFromProfile(requestId) {
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+        `/api/friend-requests/${requestId}/reject`,
+        {
+
+            method: "POST",
+
+            headers: {
+                "Authorization": token
+            }
+
+        }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+        alert(data.error);
+        return;
+
+    }
+
+    alert("Demande refusée.");
+
+    loadFriendRequests();
+    loadFriendRequestCount();
+
+    location.reload();
+}
+
+// ==========================================
+// COMPTEUR DEMANDES
+// ==========================================
+
+function updateFriendRequestCount(count) {
+
+    const counter =
+        document.getElementById("friendRequestCount");
+
+    if (!counter) {
+        return;
+    }
+
+    counter.textContent = count;
+
+    if (count > 0) {
+
+        counter.style.display = "inline-block";
+
+    } else {
+
+        counter.style.display = "none";
+
+    }
+}
+
+async function loadFriendRequestCount() {
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+        return;
+    }
+
+    const response = await fetch(
+        "/api/friend-requests",
+        {
+            headers: {
+                "Authorization": token
+            }
+        }
+    );
+
+    if (!response.ok) {
+        return;
+    }
+
+    const data = await response.json();
+
+    updateFriendRequestCount(data.length);
+}
+
+// ==========================================
+// DEMANDES
+// ==========================================
+
+async function loadFriendRequests() {
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+        "/api/friend-requests",
+        {
+            headers: {
+                "Authorization": token
+            }
+        }
+    );
+
+    if (!response.ok) {
+        return;
+    }
+
+    const requests = await response.json();
+
+    const container =
+        document.getElementById("friendRequests");
+
+    container.innerHTML = "";
+
+    updateFriendRequestCount(requests.length);
+
+    if (requests.length === 0) {
+
+        container.innerHTML =
+            "<p>Aucune demande d'ami.</p>";
+
+        return;
+    }
+
+    requests.forEach(request => {
+
+        const div = document.createElement("div");
+
+        div.className = "comment";
+
+        div.innerHTML = `
+            <strong>${escapeHtml(request.name)}</strong><br>
+            <small>${escapeHtml(request.email)}</small><br><br>
+
+            <button
+                class="success"
+                onclick="acceptFriendRequest(${request.id})"
+            >
+                ✓ Accepter
+            </button>
+
+            <button
+                class="danger"
+                onclick="rejectFriendRequest(${request.id})"
+            >
+                ✕ Refuser
+            </button>
+        `;
+
+        container.appendChild(div);
+
+    });
+}
+
+// ==========================================
+// ACCEPTER DEMANDE
+// ==========================================
+
+async function acceptFriendRequest(requestId) {
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+        `/api/friend-requests/${requestId}/accept`,
+        {
+
+            method: "POST",
+
+            headers: {
+                "Authorization": token
+            }
+
+        }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+        alert(data.error);
+        return;
+
+    }
+
+    loadFriendRequests();
+    loadFriendRequestCount();
+    loadFriends();
+}
+
+// ==========================================
+// REFUSER DEMANDE
+// ==========================================
+
+async function rejectFriendRequest(requestId) {
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+        `/api/friend-requests/${requestId}/reject`,
+        {
+
+            method: "POST",
+
+            headers: {
+                "Authorization": token
+            }
+
+        }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+        alert(data.error);
+        return;
+
+    }
+
+    loadFriendRequests();
+    loadFriendRequestCount();
+}
+
+// ==========================================
+// AMIS
+// ==========================================
+
+async function loadFriends() {
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+        "/api/friends",
+        {
+            headers: {
+                "Authorization": token
+            }
+        }
+    );
+
+    if (!response.ok) {
+        return;
+    }
+
+    const friends = await response.json();
+
+    const container =
+        document.getElementById("friendsList");
+
+    container.innerHTML = "";
+
+    if (friends.length === 0) {
+
+        container.innerHTML =
+            "<p>Vous n'avez pas encore d'amis.</p>";
+
+        return;
+    }
+
+    friends.forEach(friend => {
+
+        const div = document.createElement("div");
+
+        div.className = "search-result";
+
+        div.innerHTML = `
+            <strong>${escapeHtml(friend.name)}</strong><br>
+            <small>${escapeHtml(friend.email)}</small>
+        `;
+
+        div.onclick = () =>
+            showUserProfile(friend.id);
+
+        container.appendChild(div);
+
+    });
+
+}
+
+// ==========================================
+// CRÉER POST
+// ==========================================
+
+async function createPost() {
+
+    const content =
+        document.getElementById("postContent").value;
+
+    if (!content.trim()) {
+        return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+        "/api/posts",
+        {
+
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": token
+            },
+
+            body: JSON.stringify({
+                content
+            })
+
+        }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+        alert(data.error);
+        return;
+
+    }
+
+    document.getElementById("postContent").value = "";
+
+    loadPosts();
+}
+
+// ==========================================
+// FORMATER DATE POST
+// ==========================================
+
+function formatPostDate(dateString) {
+
+    const date = new Date(dateString);
+
+    if (isNaN(date.getTime())) {
+        return "Date inconnue";
+    }
+
+    return date.toLocaleString("fr-FR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+}
+
+// ==========================================
+// CHARGER POSTS
+// ==========================================
+
+async function loadPosts() {
+
+    const response = await fetch("/api/posts");
+
+    const posts = await response.json();
+
+    const container =
+        document.getElementById("posts");
+
+    container.innerHTML = "";
+
+    posts.forEach(post => {
+
+        const div = document.createElement("div");
+
+        div.className = "post";
+
+        div.innerHTML = `
+            <div
+                class="post-author"
+                onclick="showUserProfile(${post.user_id})"
+            >
+                ${escapeHtml(post.name)}
+            </div>
+
+            <div class="post-date">
+                🕒 ${formatPostDate(post.created_at)}
+            </div>
+
+            <div class="post-content">
+                ${escapeHtml(post.content)}
+            </div>
+
+            <div>
+                ❤️ ${post.likes_count}
+                💬 ${post.comments_count}
+            </div>
+
+            <div class="post-actions">
+
+                <button
+                    class="secondary"
+                    onclick="likePost(${post.id})"
+                >
+                    ❤️ J'aime
+                </button>
+
+                ${
+                    currentUser &&
+                    currentUser.id === post.user_id
+                    ?
+                    `
+                    <button
+                        class="danger"
+                        onclick="deletePost(${post.id})"
+                    >
+                        🗑 Supprimer
+                    </button>
+                    `
+                    :
+                    ""
+                }
+
+            </div>
+
+            <div id="comments-${post.id}"></div>
+
+            <input
+                type="text"
+                id="comment-input-${post.id}"
+                placeholder="Écrire un commentaire..."
+                onkeydown="if(event.key === 'Enter') addComment(${post.id})"
+            >
+
+        `;
+
+        container.appendChild(div);
+
+        loadComments(post.id);
+
+    });
+}
+
+// ==========================================
+// LIKE
+// ==========================================
+
+async function likePost(postId) {
+
+    const token = localStorage.getItem("token");
+
+    await fetch(
+        `/api/posts/${postId}/like`,
+        {
+
+            method: "POST",
+
+            headers: {
+                "Authorization": token
+            }
+
+        }
+    );
+
+    loadPosts();
+}
+
+// ==========================================
+// SUPPRIMER POST
+// ==========================================
+
+async function deletePost(postId) {
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+        `/api/posts/${postId}`,
+        {
+
+            method: "DELETE",
+
+            headers: {
+                "Authorization": token
+            }
+
+        }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+        alert(data.error);
+        return;
+
+    }
+
+    loadPosts();
+}
+
+// ==========================================
+// COMMENTAIRES
+// ==========================================
+
+async function loadComments(postId) {
+
+    const response = await fetch(
+        `/api/posts/${postId}/comments`
+    );
+
+    const comments = await response.json();
+
+    const container =
+        document.getElementById(`comments-${postId}`);
+
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML = "";
+
+    comments.forEach(comment => {
+
+        const div = document.createElement("div");
+
+        div.className = "comment";
+
+        div.innerHTML = `
+            <strong>${escapeHtml(comment.name)}</strong>
+            : ${escapeHtml(comment.content)}
+
+            ${
+                currentUser &&
+                currentUser.id === comment.user_id
+                ?
+                `
+                <button
+                    class="danger"
+                    onclick="deleteComment(${comment.id})"
+                >
+                    🗑
+                </button>
+                `
+                :
+                ""
+            }
+        `;
+
+        container.appendChild(div);
+
+    });
+}
+
+// ==========================================
+// AJOUTER COMMENTAIRE
+// ==========================================
+
+async function addComment(postId) {
+
+    const input =
+        document.getElementById(
+            `comment-input-${postId}`
+        );
+
+    const content = input.value;
+
+    if (!content.trim()) {
+        return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+        `/api/posts/${postId}/comments`,
+        {
+
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": token
+            },
+
+            body: JSON.stringify({
+                content
+            })
+
+        }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+        alert(data.error);
+        return;
+
+    }
+
+    input.value = "";
+
+    loadComments(postId);
+}
+
+// ==========================================
+// SUPPRIMER COMMENTAIRE
+// ==========================================
+
+async function deleteComment(commentId) {
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+        `/api/comments/${commentId}`,
+        {
+
+            method: "DELETE",
+
+            headers: {
+                "Authorization": token
+            }
+
+        }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+        alert(data.error);
+        return;
+
+    }
+
+    loadPosts();
+}
+
+// ==========================================
+// FERMER PROFIL
+// ==========================================
+
+function closeProfile() {
+
+    document
+        .getElementById("profileSection")
+        .classList.add("hidden");
+
+}
+
+// ==========================================
+// SÉCURITÉ HTML
+// ==========================================
+
+function escapeHtml(text) {
+
+    const div = document.createElement("div");
+
+    div.textContent = text;
+
+    return div.innerHTML;
+}
+
+// ==========================================
+// DÉMARRAGE
+// ==========================================
+
+loadCurrentUser();
+
+</script>
+
+</body>
+</html>
